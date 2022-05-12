@@ -1,20 +1,18 @@
 import numpy as np
 import torch
-import math
-import pandas as pd
-import torch.nn as nn
+
 import torch.optim as optim
+import model.optimizers as optimizers
 from pathlib import Path
 import argparse
 import os
 
 from utils import multi_relation_load, save_node_pred, save_link_pred
-from model.model import Classification, LinkPrediction, TIMME, TIMMEhierarchical, TIMMEsingle
+from model.model import Classification, LinkPrediction, TIMME, TIMMEhierarchical
 from model.embedding import PartlyLearnableEmbedding, FixedFeature
-from task import ClassificationTask, LinkPred_BatchTask, TIMMEManager
+from task import ClassificationTask, TIMMEManager
 
 import random
-import math
 
 import time
 
@@ -24,7 +22,7 @@ warnings.filterwarnings("ignore") # ignore the warnings
 parser = argparse.ArgumentParser()
 parser.add_argument('-e','--epochs', type=int, default=300,
                     help='Number of epochs to train. (default: 300)')
-parser.add_argument('--optimizer', type=str, default="Adam", choices=["Adagrad", "Adam"],
+parser.add_argument('--optimizer', type=str, default="RiemannianAdam", choices=["RiemannianAdam", "Adam", "Adagrad"],
                     help='The optimizer to use. (default: Adam)')
 parser.add_argument('--lr', type=float, default=0.01,
                     help='Initial learning rate. (default: 0.01)')
@@ -38,7 +36,7 @@ parser.add_argument('--hidden', type=int, default=100,
                     help='Number of hidden units. (default: 100)')
 parser.add_argument('--single_relation', type=int, default=0,
                     help='The single-relation task to be run by single-relation. (default: 0)')
-parser.add_argument('-frd','--fixed_random_seed', default=False, action='store_true',
+parser.add_argument('-frd','--fixed_random_seed', default=True, action='store_true',
                     help='if random seed is fixed, we will use the fixed random seed (default: false)')
 parser.add_argument('--dropout', type=float, default=0.1,
                     help='Dropout rate (default: 0.1).')
@@ -68,6 +66,18 @@ parser.add_argument("--maximum_negative_rate", type=float, default=1.5,
                     help="The maximum negative sampling rate for training link prediction task")
 parser.add_argument('--freeze_feature', default=False, action='store_true',
                     help='To freeze the feature as encoder input or not. (default: False)')
+
+parser.add_argument('--model', default='HGCN')
+parser.add_argument('--dim', default=16)
+parser.add_argument('--num-layers', default=2)
+parser.add_argument('--act', default='relu')
+parser.add_argument('--bias', default=1, type=int)
+parser.add_argument('--weight-decay', default=0)
+parser.add_argument('--manifold', default='Hyperboloid')
+parser.add_argument('--log-freq', default=5)
+parser.add_argument('--c', default=None)
+parser.add_argument('--use_att', default=False)
+parser.add_argument('--local_agg', default=0)
 
 args = parser.parse_args()
 
@@ -116,6 +126,12 @@ num_relations = len(args.relations)
 num_adjs = len(adjs)
 relations = [r.split("_")[0] for r in args.relations]
 
+if args.feature != "one_hot" and args.feature != "random":
+    args.n_nodes, args.feat_dim = features.num_embeddings, features.embedding_dim
+else:
+    args.n_nodes, args.feat_dim = features.shape
+args.feat_dim += 1
+
 if trainable is None:
     # if features are fixed
     feature_dimension = features.shape[1]
@@ -162,6 +178,7 @@ elif args.task == "TIMME_hierarchical":
             num_classes,
             args.dropout,
             relations,
+            args,
             regularization=args.regularization,
             skip_mode=args.skip_mode,
             attention_mode=args.attention_mode,
@@ -179,20 +196,6 @@ elif args.task == "TIMME":
             skip_mode=args.skip_mode,
             attention_mode=args.attention_mode,
             trainable_features=trainable)
-elif args.task == "TIMME_SingleLink":
-    model = TIMMEsingle(num_relations,
-            num_entities,
-            num_adjs,
-            feature_dimension,
-            hidden_size,
-            num_classes,
-            args.dropout,
-            relations,
-            regularization=args.regularization,
-            skip_mode=args.skip_mode,
-            attention_mode=args.attention_mode,
-            trainable_features=trainable,
-            relation_id=args.single_relation)
 else:
     print("Fatal Error: Task {} not implemented yet".format(args.task))
     exit(0)
@@ -207,6 +210,9 @@ if args.optimizer == "Adagrad":
 elif args.optimizer == "Adam":
     optimizer = optim.Adam(model.parameters(),
                        lr=args.lr, weight_decay=args.weight_decay)
+elif args.optimizer == "RiemannianAdam":
+    optimizer = getattr(optimizers, args.optimizer)(params=model.parameters(), lr=args.lr,
+                                                    weight_decay=args.weight_decay)
 else:
     print("Fatal Error: Optimizer {} not recognized.".format(args.optimizer))
     exit(0)
@@ -234,8 +240,8 @@ elif args.task in ["TIMME", "TIMME_hierarchical", "TIMME_SingleLink"]:
     task.run(args.epochs)
     all_pred = task.get_pred()
     node_pred, link_pred = all_pred
-    save_node_pred(node_pred, args.data, label_map, all_id_list, task=args.task)
-    save_link_pred(link_pred, args.data, relations, all_id_list, task=args.task)
+    # save_node_pred(node_pred, args.data, label_map, all_id_list, task=args.task)
+    # save_link_pred(link_pred, args.data, relations, all_id_list, task=args.task)
     if args.task in ["TIMME_hierarchical"]:
         print("Architecture 2, lambda value: {} for relations: {}".format(model.attention_weight, " ".join(relations)))
 

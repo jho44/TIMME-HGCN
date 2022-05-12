@@ -96,6 +96,11 @@ class TaskManager(object):
         # set the model to evaluation mode
         self.model.eval()
         features = features if features is not None else self.features_generator()
+        # if type(features) is torch.Tensor:
+        #     features = features.to_dense()
+        # TODO: if manifold is hyperboloid
+        o = torch.zeros_like(features)
+        features = torch.cat([o[:, 0:1], features], dim=1)
         output = self.model(features, self.adjs)
         return self.eval_metrics(output, data, **kwargs)
     def train(self, epochs):
@@ -147,7 +152,7 @@ class ClassificationTask(TaskManager):
         features = self.features_generator()
         output = self.model(features, self.adjs).cpu().detach().numpy()
         return output # as N * 2 numpy
-    
+
 
 class LinkPredictionTask(TaskManager):
     def __init__(self, model, features_generator, adjs, lr, weight_decay, algorithm="Adam", fastmode=False, lr_scheduler="Step", min_lr=1e-5, epochs=600, n_batches=10, n_val_batches=1, n_test_batches=1, negative_rate = 1.5, cuda=False, report_interval=0, max_epochs=100):
@@ -206,34 +211,7 @@ class LinkPredictionTask(TaskManager):
             loss_train_sum += loss_train
         return loss_train_sum
 
-class LinkPred_BatchTask(LinkPredictionTask):
-    def get_adjs(self, mask_info):
-        return self.adjs
-    def loss_epoch(self):
-        loss_train_sum = 0
-        sampler = self.train_data
-        # do the sampling (from given positive samples) and negative
-        batches = sampler.batch_generator()
-        for batch_id, triplets, labels, _, mask_info in batches:
-            labels = torch.from_numpy(labels)
-            triplets = torch.from_numpy(triplets)
-            if self.cuda:
-                triplets, labels = triplets.cuda(0), labels.cuda(0)
-            self.optimizer.zero_grad()
-            features = self.features_generator()
-            masked_adjs = self.get_adjs(mask_info)
-            embeddings = self.model(features, masked_adjs)
-            loss_train = self.model.get_loss(embeddings, labels, triplets)
-            loss_train.backward()
-            self.optimizer.step()
-            loss_train_sum += loss_train.item()
-        return loss_train_sum 
-    def train_epoch(self):
-        self.model.train()
-        loss_train = self.loss_epoch()
-        return {"loss_train": loss_train}
-
-class TIMMEManager(LinkPredictionTask):
+class TIMMEManager(LinkPredictionTask): ## ? why is this child of LinkPrediction when TIMMEHierarchical is doing classification?
     """
     Task manager for all the TIMME models.
     """
@@ -249,6 +227,7 @@ class TIMMEManager(LinkPredictionTask):
         self.valid_data = (self.valid_data, valid_data)
         self.test_data  = (self.test_data,  test_data)
         self.labels = labels
+
     def loss_epoch(self):
         loss_train_sum = 0
         sampler, train_class_data = self.train_data
@@ -263,13 +242,15 @@ class TIMMEManager(LinkPredictionTask):
                 triplets = [torch.from_numpy(t) for t in triplets]
             self.optimizer.zero_grad()
             features = self.features_generator()
+            # if type(features) is torch.Tensor:
+            #     features = features.to_dense()
             masked_adjs = self.get_adjs(mask_info)
-            embeddings = self.model(features, masked_adjs) # R+1: link-pred * #link-types, node-classification
+            embeddings = self.model.encode(features, masked_adjs) # R+1: link-pred * #link-types, node-classification
             loss_train = self.model.get_loss(embeddings, labels, triplets, mask_info, train_class_data, self.labels)
             loss_train.backward()
             self.optimizer.step()
             loss_train_sum += loss_train.item()
-        return loss_train_sum 
+        return loss_train_sum
     def train_epoch(self):
         self.model.train()
         loss_train = self.loss_epoch()
@@ -297,7 +278,12 @@ class TIMMEManager(LinkPredictionTask):
     def get_pred(self):
         self.model.eval()
         features = self.features_generator()
-        embeddings = self.model(features, self.adjs)
+        # if type(features) is torch.Tensor:
+        #     features = features.to_dense()
+        # TODO: manifold hyperboloid concat
+        # o = torch.zeros_like(features)
+        # features = torch.cat([o[:, 0:1], features], dim=1)
+        embeddings = self.model.encode(features, self.adjs)
         # the node output
         node_output = embeddings[-1].cpu().detach().numpy() # as N * 2 numpy
         # the link output
@@ -309,4 +295,4 @@ class TIMMEManager(LinkPredictionTask):
 
 
 
-        
+

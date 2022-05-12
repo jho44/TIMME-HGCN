@@ -138,7 +138,7 @@ def link_accuracy(all_scores, all_labels, min_step_digit=2):
         max_correct = current_correct
         while current_threshold < sorted_list[-1][0]:
             # not-yet reached the next data point
-            if current_threshold <= sorted_list[idx][0]: 
+            if current_threshold <= sorted_list[idx][0]:
                 current_threshold += min_step
                 continue
             # reached the next data point
@@ -318,31 +318,27 @@ def multi_relation_load(path="../data/PureP", label="dict.csv",
     label_map = dict(zip(label_categories, range(len(label_categories))))
     labels = list(map(label_map.get, label_list))
     n_labels = len(labels)                          # portion .6:.2:.2 if there's no additional label
-    n_train = math.ceil(n_labels * .8) 
-    n_valid = math.ceil(n_labels * .1) 
+    n_train = math.ceil(n_labels * .8)
+    n_valid = math.ceil(n_labels * .1)
     idx_all = list(range(n_labels))
 
     random.shuffle(idx_all)                         # permutation added
     idx_train = idx_all[:n_train]
     idx_val = idx_all[n_train: n_train + n_valid]
     idx_test = idx_all[n_train + n_valid: ]
-    
+
     print("\tprocessing nodes")
-    
+
     unlabeled_ids = all_ids - set(labeled_ids)
-    all_id_list = np.concatenate((  np.array(labeled_ids, dtype=np.int64), 
+    all_id_list = np.concatenate((  np.array(labeled_ids, dtype=np.int64),
                                     np.array(list(unlabeled_ids), dtype=np.int64)
                                 ))
     n_entities = len(all_id_list)
     idx_map = {j: i for i, j in enumerate(all_id_list)}
-    
+
     print("\tprocessing edges")
 
     adjs = list()
-
-    triplets = None
-    relations = [f_name.split('_')[0] for f_name in files]
-    idx_relation = 0
 
     train_link_info = list()
     valid_link_info = list()
@@ -350,9 +346,9 @@ def multi_relation_load(path="../data/PureP", label="dict.csv",
     # make sure that the portion makes sense
     if split_links:
         test_split_ratio = portion["test"]
-        full_split_ratio = portion["test"] + portion["valid"] 
+        full_split_ratio = portion["test"] + portion["valid"]
         assert full_split_ratio < 1, "validation set and test set takes up to 100%"
-    
+
     for data_df in data_dfs:
         n_edges = len(data_df)
         # we can do positive sampling of the edges here, in link prediction
@@ -394,12 +390,12 @@ def multi_relation_load(path="../data/PureP", label="dict.csv",
             # otherwise, we'll have 2r + 1 adjacency matrix
             adjs.append(calculate_laplacian(adj, calc_lap))
             adjs.append(calculate_laplacian(adj.T, calc_lap))
-            
-    
+
+
     edge_indexs = np.array(range(n_entities))
 
     if separate_directions:
-        self_loop = sp.csr_matrix((np.ones(n_entities), (edge_indexs, edge_indexs)), 
+        self_loop = sp.csr_matrix((np.ones(n_entities), (edge_indexs, edge_indexs)),
                                   shape=(n_entities, n_entities), dtype=np.float32)
         adjs.append(calculate_laplacian(self_loop, calc_lap))
 
@@ -407,7 +403,7 @@ def multi_relation_load(path="../data/PureP", label="dict.csv",
 
     trainable = None
     mask = None
-    
+
     if feature_data == "one_hot":
         # one-hot
         features = sp.eye(n_entities)
@@ -444,7 +440,7 @@ def multi_relation_load(path="../data/PureP", label="dict.csv",
     else:
         print("undefined feature type {}".format(type(feature_data)))
         exit(0)
-    
+
     labels = torch.LongTensor(labels)
     adjs = [sparse_mx_to_torch_sparse_tensor(adj) for adj in adjs]
 
