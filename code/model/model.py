@@ -12,52 +12,6 @@ import torch
 from utils import slicing
 import numpy as np
 
-class WeightClipper(object):
-
-    def __init__(self, frequency=5):
-        self.frequency = frequency
-
-    def __call__(self, module):
-        # filter the variables to get the ones you want
-        if hasattr(module, 'c'):
-            c = module.c.data
-            c = c.clamp(min=0.1)
-        if hasattr(module, 'c_in'):
-            c = module.c_in.data
-            c = c.clamp(min=0.1)
-        if hasattr(module, 'linear') and hasattr(module.linear, 'c'):
-            c = module.linear.c.data
-            c = c.clamp(min=0.1)
-        if hasattr(module, 'agg') and hasattr(module.agg, 'c'):
-            c = module.agg.c.data
-            c = c.clamp(min=0.1)
-        if hasattr(module, 'hyp_act') and hasattr(module.hyp_act, 'c_in'):
-            c = module.hyp_act.c_in.data
-            c = c.clamp(min=0.1)
-        if hasattr(module, '0'):
-            if hasattr(getattr(module,'0'), 'linear') and hasattr(getattr(module,'0').linear, 'c'):
-                c = getattr(module,'0').linear.c.data
-                c = c.clamp(min=0.1)
-            if hasattr(getattr(module,'0'), 'agg') and hasattr(getattr(module,'0').agg, 'c'):
-                c = getattr(module,'0').agg.c.data
-                c = c.clamp(min=0.1)
-            if hasattr(getattr(module,'0'), 'hyp_act') and hasattr(getattr(module,'0').hyp_act, 'c_in'):
-                c = getattr(module,'0').hyp_act.c_in.data
-                c = c.clamp(min=0.1)
-        if hasattr(module, 'layers'):
-            if hasattr(module.layers, '0'):
-                if hasattr(getattr(module.layers,'0'), 'linear') and hasattr(getattr(module.layers,'0').linear, 'c'):
-                    c = getattr(module.layers,'0').linear.c.data
-                    c = c.clamp(min=0.1)
-                if hasattr(getattr(module.layers,'0'), 'agg') and hasattr(getattr(module.layers,'0').agg, 'c'):
-                    c = getattr(module.layers,'0').agg.c.data
-                    c = c.clamp(min=0.1)
-                if hasattr(getattr(module.layers,'0'), 'hyp_act') and hasattr(getattr(module.layers,'0').hyp_act, 'c_in'):
-                    c = getattr(module.layers,'0').hyp_act.c_in.data
-                    c = c.clamp(min=0.1)
-
-clipper = WeightClipper()
-
 def get_dim_act_curv(args):
     """
     Helper function to get dimension and activation at every layer.
@@ -238,15 +192,9 @@ class HyperbolicGraphConvolution(nn.Module):
     def forward(self, input):
         x, adj = input
         h = self.linear.forward(x)
-        # print("AFTER LINEAR")
-        # print(h)
         h = self.agg.forward(h, adj) # want neighbors from diff relations to be aggregated properly
-        # print("AFTER AGG")
-        # print(h)
         h = self.hyp_act.forward(h)
         output = h, adj
-        # print("AFTER ACT")
-        # print(h)
         return output
 
 class Encoder(nn.Module):
@@ -264,7 +212,6 @@ class Encoder(nn.Module):
             output, _ = self.layers.forward(input)
         else:
             output = self.layers.forward(x)
-        # print(output)
         return output
 
 class HGCN(Encoder):
@@ -293,27 +240,9 @@ class HGCN(Encoder):
         self.encode_graph = True
 
     def encode(self, x, adj):
-        # clipper = WeightClipper()
-        # self.apply(clipper)
-
-        # print("ACTUAL CURVATURE")
-        # print(self.curvatures[0])
-        # if self.curvatures[0] <= 0.1:
-        #     print("LESS THAN")
-        #     for param in self.parameters():
-        #         param.requires_grad = False
-        #     self.curvatures[0] = torch.tensor([0.01])
-        # print("HGCN ENCODE PROJ")
-        # print(x)
         x_tan = self.manifold.proj_tan0(x, self.curvatures[0])
-        # print("TAN")
-        # print(x_tan)
         x_hyp = self.manifold.expmap0(x_tan, c=self.curvatures[0])
-        # print("EXP")
-        # print(x_hyp)
         x_hyp = self.manifold.proj(x_hyp, c=self.curvatures[0])
-        # print("HYP PROJ")
-        # print(x_hyp)
         return super(HGCN, self).encode(x_hyp, adj)
 
 class GCN_multirelation(nn.Module):
@@ -417,16 +346,7 @@ class LinkPrediction(nn.Module):
         '''
         forward without calculating loss
         '''
-        # print("X")
-        # print(x)
-        # print(x.shape)
-        # print("ADJS")
-        # print(adjs[0])
-        # print(len(adjs))
-        # print(adjs[0].shape)
         embeddings = self.gcn.encode(x, adjs) if calc_gcn else x
-        # print("EMBEDDINGS")
-        # print(embeddings)
         if self.additional_layer:
             embeddings = self.additional_layer(embeddings)
         return embeddings
@@ -555,12 +475,7 @@ class TIMMEhierarchical(TIMME):
 
     def forward(self, x, adjs):
         gcn_embedding = self.gcn.encode(x, adjs)
-        # print("GCN EMBEDDING")
-        # print(gcn_embedding[0])
-        # print(gcn_embedding.shape)
         link_embeddings = [m(gcn_embedding, adjs, calc_gcn=False) for m in self.models[:-1]]
-        # print("LINK EMBEDDINGS")
-        # print(link_embeddings)
         attention_weight = self._lambda(torch.stack(link_embeddings))
         node_x_in = torch.sum(attention_weight * torch.stack(link_embeddings, 2), 2)
         node_embedding = self.models[-1](node_x_in, adjs, calc_gcn=False)
