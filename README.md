@@ -1,3 +1,9 @@
+# TIMME+HGCN
+Swapper [TIMME-hierarchical](https://github.com/PatriciaXiao/TIMME)'s encoder for an [HGCN](https://github.com/HazyResearch/hgcn) that projects to Hyperboloid space and takes each node/user's Twitter description as input in the first layer of the network.
+working cmd: `python3 main.py -e 50 -t TIMME_hierarchical --hidden 16 -f status --bias 0`
+
+================================================================================================================================
+__Forked repo's README is below__
 # TIMME
 
 ## Data Updates on 7 March 2021: Text provided
